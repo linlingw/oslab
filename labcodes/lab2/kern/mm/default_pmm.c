@@ -112,9 +112,10 @@ default_init_memmap(struct Page *base, size_t n) {
         assert(PageReserved(p));
         p->flags = p->property = 0;
         set_page_ref(p, 0);
+        SetPageProperty(p);
     }
     base->property = n;
-    SetPageProperty(base);
+    //SetPageProperty(base);
     nr_free += n;
     list_add(&free_list, &(base->page_link));
 }
@@ -134,15 +135,26 @@ default_alloc_pages(size_t n) {
             break;
         }
     }
-    if (page != NULL) {
-        list_del(&(page->page_link));
+    if (page != NULL) { // 如果寻找到了满足条件的空闲内存块
+        /*list_del(&(page->page_link));
         if (page->property > n) {
             struct Page *p = page + n;
             p->property = page->property - n;
             list_add(&free_list, &(p->page_link));
     }
         nr_free -= n;
-        ClearPageProperty(page);
+        ClearPageProperty(page);*/
+        for (struct Page *p = page; p != (page + n); ++p) 
+        {
+        ClearPageProperty(p); // 将分配出去的内存页标记为非空闲
+        }
+        if (page->property > n) { // 如果原先找到的空闲块大小大于需要的分配内存大小，进行分裂
+            struct Page *p = page + n; // 获得分裂出来的新的小空闲块的第一个页的描述信息
+            p->property = page->property - n; // 更新新的空闲块的大小信息
+            list_add(&(page->page_link), &(p->page_link)); // 将新空闲块插入空闲块列表中
+        }
+        list_del(&(page->page_link)); // 删除空闲链表中的原先的空闲块
+        nr_free -= n; // 更新总空闲物理页的数量
     }
     return page;
 }
@@ -153,7 +165,8 @@ default_free_pages(struct Page *base, size_t n) {
     struct Page *p = base;
     for (; p != base + n; p ++) {
         assert(!PageReserved(p) && !PageProperty(p));
-        p->flags = 0;
+        //p->flags = 0;
+        SetPageProperty(p);
         set_page_ref(p, 0);
     }
     base->property = n;
@@ -175,7 +188,20 @@ default_free_pages(struct Page *base, size_t n) {
         }
     }
     nr_free += n;
-    list_add(&free_list, &(base->page_link));
+    le = list_next(&free_list);
+    // 迭代空闲链表中的每一个节点
+    while (le != &free_list) {
+        // 转为Page结构
+        p = le2page(le, page_link);
+        if (base + base->property <= p) {
+            // 进行空闲链表结构的校验，不能存在交叉覆盖的地方
+            assert(base + base->property != p);
+            break;
+        }
+        le = list_next(le);
+    }
+    // 将base加入到空闲链表之中
+    list_add_before(le, &(base->page_link));
 }
 
 static size_t
