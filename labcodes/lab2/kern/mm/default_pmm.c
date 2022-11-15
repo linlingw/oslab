@@ -112,12 +112,11 @@ default_init_memmap(struct Page *base, size_t n) {
         assert(PageReserved(p));
         p->flags = p->property = 0;
         set_page_ref(p, 0);
-        SetPageProperty(p);
     }
     base->property = n;
-    //SetPageProperty(base);
+    SetPageProperty(base);
     nr_free += n;
-    list_add(&free_list, &(base->page_link));
+    list_add_before(&free_list, &(base->page_link));
 }
 
 static struct Page *
@@ -146,7 +145,7 @@ default_alloc_pages(size_t n) {
         ClearPageProperty(page);*/
         for (struct Page *p = page; p != (page + n); ++p) 
         {
-        ClearPageProperty(p); // 将分配出去的内存页标记为非空闲
+            ClearPageProperty(p); // 将分配出去的内存页标记为非空闲
         }
         if (page->property > n) { // 如果原先找到的空闲块大小大于需要的分配内存大小，进行分裂
             struct Page *p = page + n; // 获得分裂出来的新的小空闲块的第一个页的描述信息
